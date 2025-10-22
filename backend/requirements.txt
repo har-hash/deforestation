@@ -1,0 +1,32 @@
+# FastAPI and server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Google Cloud services
+earthengine-api==0.1.384
+google-cloud-bigquery==3.14.1
+google-cloud-storage==2.14.0
+google-auth==2.26.2
+
+# Data processing
+numpy==1.26.3
+scipy==1.11.4
+pandas==2.1.4
+
+# Image processing (for local smooth detection)
+opencv-python==4.9.0.80
+scikit-image==0.22.0
+
+# Windows compatibility
+windows-curses; sys_platform == 'win32'
+
+# Utilities
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Testing (optional)
+pytest==7.4.4
+httpx==0.26.0
+

@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deforestation-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GEE_SERVICE_ACCOUNT=${GEE_SERVICE_ACCOUNT}
+      - GEE_PRIVATE_KEY_PATH=/app/gee-private-key.json
+      - BIGQUERY_DATASET=${BIGQUERY_DATASET}
+      - BIGQUERY_TABLE=${BIGQUERY_TABLE}
+      - CORS_ORIGINS=["http://localhost:3000"]
+    volumes:
+      - ./backend/gee-private-key.json:/app/gee-private-key.json:ro
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: deforestation-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: deforestation-network
+
+
+
