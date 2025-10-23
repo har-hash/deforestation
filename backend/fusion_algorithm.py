@@ -111,10 +111,10 @@ class MultiDatasetFusionAlgorithm:
         
         # Get confidence from Dynamic World
         dw_confidence_start = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1') \
-                               .filterDate(start_date, self._mid_date(start_date, end_date)) \
-                               .filterBounds(roi) \
-                               .select('trees') \
-                               .mean()
+                              .filterDate(start_date, self._mid_date(start_date, end_date)) \
+                              .filterBounds(roi) \
+                              .select('trees') \
+                              .mean()
         
         dw_confidence_end = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1') \
                              .filterDate(self._mid_date(start_date, end_date), end_date) \
@@ -122,7 +122,13 @@ class MultiDatasetFusionAlgorithm:
                              .select('trees') \
                              .mean()
         
-        dw_confidence_change = dw_confidence_start.subtract(dw_confidence_end)
+        # Safe subtract with null check
+        dw_confidence_change = ee.Image(0).where(
+            dw_confidence_start.bandNames().size().gt(0).And(
+                dw_confidence_end.bandNames().size().gt(0)
+            ),
+            dw_confidence_start.subtract(dw_confidence_end)
+        ).rename('dw_confidence_change')
         
         # =====================================================================
         # STAGE 3: HANSEN HISTORICAL VALIDATION
@@ -160,8 +166,14 @@ class MultiDatasetFusionAlgorithm:
                     .select('VV') \
                     .mean()
         
-        # SAR backscatter decrease indicates deforestation
-        s1_change = s1_before.subtract(s1_after)
+        # SAR backscatter decrease indicates deforestation (with null check)
+        s1_change = ee.Image(0).where(
+            s1_before.bandNames().size().gt(0).And(
+                s1_after.bandNames().size().gt(0)
+            ),
+            s1_before.subtract(s1_after)
+        ).rename('s1_change')
+        
         s1_loss = s1_change.gt(3)  # 3 dB decrease threshold
         
         # =====================================================================
@@ -330,6 +342,18 @@ class MultiDatasetFusionAlgorithm:
     def _calculate_fusion_stats(self, loss_image: ee.Image, roi: ee.Geometry, fusion_score: ee.Image) -> Dict:
         """Calculate fusion statistics"""
         try:
+            # Check if loss_image has bands
+            band_count = loss_image.bandNames().size().getInfo()
+            
+            if band_count == 0:
+                logger.warning("No forest loss detected - empty result")
+                return {
+                    'total_area_ha': 0,
+                    'average_confidence': 0,
+                    'roi_area_ha': round(roi.area().getInfo() / 10000, 2),
+                    'fusion_method': 'multi_dataset_consensus'
+                }
+            
             # Total area
             area = loss_image.multiply(ee.Image.pixelArea()).reduceRegion(
                 reducer=ee.Reducer.sum(),
@@ -338,7 +362,7 @@ class MultiDatasetFusionAlgorithm:
                 maxPixels=1e9
             )
             area_info = area.getInfo()
-            total_area_m2 = list(area_info.values())[0] if area_info else 0
+            total_area_m2 = list(area_info.values())[0] if area_info and area_info else 0
             
             # Average confidence
             avg_conf = fusion_score.reduceRegion(
@@ -348,7 +372,7 @@ class MultiDatasetFusionAlgorithm:
                 maxPixels=1e9
             )
             conf_info = avg_conf.getInfo()
-            confidence = list(conf_info.values())[0] if conf_info else 0
+            confidence = list(conf_info.values())[0] if conf_info and conf_info else 0
             
             return {
                 'total_area_ha': round(total_area_m2 / 10000, 2),

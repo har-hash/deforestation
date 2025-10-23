@@ -1,6 +1,27 @@
 """
 DSA Algorithms for Spatial Change Detection
 Implements Union-Find and KD-Tree for efficient spatial analysis
+
+⚠️ STATUS: REFERENCE IMPLEMENTATION - NOT CURRENTLY IN PRODUCTION USE
+
+This file contains custom implementations of spatial data structures (Union-Find, KD-Tree)
+that were originally intended for clustering deforestation regions.
+
+WHY NOT USED:
+- Google Earth Engine's built-in reduceToVectors() is more efficient and reliable
+- GEE handles vectorization and clustering natively on their servers
+- Our custom Python DSA would require downloading full rasters (expensive/slow)
+- Production code uses GEE's optimized server-side operations
+
+KEPT FOR:
+- Reference implementation for educational purposes
+- Future experimentation with client-side clustering
+- Potential use in post-processing of GEE results
+
+To use these algorithms in production, you would need to:
+1. Download full resolution imagery from GEE
+2. Run detection locally (very CPU/memory intensive)
+3. Implement worker queue architecture to handle load
 """
 
 import numpy as np

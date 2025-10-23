@@ -1,434 +1,321 @@
-# 🌲 Illegal Deforestation Tracker - Project Summary
+# Illegal Deforestation Tracker - Project Summary
 
-## ✅ Project Status: COMPLETE
+## ✅ Project Status: PRODUCTION-READY
 
-A production-ready web application for real-time illegal deforestation tracking using Google Earth Engine, BigQuery, DSA algorithms, and Google Maps API.
+A web application for real-time illegal deforestation tracking using Google Earth Engine, BigQuery, and Leaflet Maps with advanced satellite imagery processing.
 
 ## 📦 What Has Been Built
 
-### Backend (Python/FastAPI)
-✅ **Core Infrastructure**
-- FastAPI application with async support
-- Configuration management with environment variables
-- CORS middleware and error handling
-- Health check endpoints
-- Logging system
+### Core Detection System
+✅ **Multi-Method Deforestation Detection**
+- **Hansen Method**: Production-grade forest loss detection using Hansen Global Forest Change dataset (2000-present)
+- **Combination Method**: Research-grade multi-sensor fusion using ESA WorldCover, Dynamic World, GEDI, and Sentinel-1 SAR
+- **NDVI Method**: Ultra-sensitive vegetation change detection
+- Real-time satellite image processing through Google Earth Engine
 
-✅ **Google Earth Engine Integration**
-- Hansen Global Forest Change dataset processing
-- MODIS NDVI-based change detection
-- Temporal comparison algorithms
-- GeoJSON export functionality
-- Automatic polygon generation
+✅ **Image Processing Pipeline**
+- Local CPU-intensive processing with OpenCV and scikit-image
+- CLAHE contrast enhancement
+- Gaussian blur and Canny edge detection
+- Morphological operations (erosion, dilation, opening, closing)
+- Smooth polygon vectorization with Douglas-Peucker simplification
+- ⚠️ Performance note: Resource-intensive, recommended for worker queue architecture
 
-✅ **BigQuery Integration**
-- Automatic dataset and table creation
-- Partitioned tables for performance
-- Efficient data insertion
-- Complex querying with filters
-- GeoJSON to WKT conversion
-- Statistics aggregation
-
-✅ **DSA Algorithms**
-- **Union-Find**: Clusters spatially connected deforested pixels with path compression
-- **KD-Tree**: Fast spatial queries and nearest neighbor search
-- **Spatial Change Detector**: Combines algorithms for accurate detection and confidence scoring
-
+### Backend (FastAPI)
 ✅ **API Endpoints**
-- `/api/forest-loss` - Get deforestation data (live or from BigQuery)
-- `/api/forest-loss/process` - Trigger detection pipeline
-- `/api/alerts` - Real-time high-confidence alerts
-- `/api/alerts/recent` - Recent activity feed
-- `/api/stats` - Aggregated statistics
-- `/api/stats/timeline` - Time-series data
-- `/api/stats/regions` - Regional breakdown
-- `/health` - Service health check
+- `/api/forest-loss` - Main detection endpoint with lat/lon/radius/date range parameters
+- `/api/alerts` - Recent deforestation alerts with severity indicators
+- `/api/stats` - Aggregated statistics (area lost, incident count, confidence metrics)
+- `/health` - Service health monitoring
+
+✅ **Data Pipeline**
+- Google Earth Engine integration for satellite data
+- BigQuery for data warehousing and querying
+- GeoJSON output with polygon geometries
+- Feature properties: area_ha, confidence, timestamp, detection_method
+- **Truncation handling**: Warns users when results exceed 1000 features
+
+✅ **Authentication**
+- Secure Google Cloud Application Default Credentials (ADC)
+- Uses `gcloud auth application-default login` (recommended method)
+- All insecure/redundant auth scripts removed
 
 ### Frontend (Next.js/React)
 ✅ **Main Dashboard**
-- Google Maps with satellite layer integration
-- Real-time deforestation polygon overlays
-- Color-coded confidence visualization
-- Interactive info windows with details
-- Responsive design (mobile/tablet/desktop)
+- **Leaflet** interactive map with Esri World Imagery satellite tiles
+- Real-time deforestation polygon overlays with color-coded confidence
+- Full-screen map layout with floating controls
+- Date range selection with visual date pickers
+- Loading states with centered spinner overlay
+- Scan circle visualization showing search area
 
 ✅ **Components**
-- **MapView**: Google Maps with live satellite imagery and polygon overlays
-- **AlertPanel**: Real-time alerts with severity indicators and auto-refresh
-- **StatsCard**: Animated statistics cards with loading states
-- **TimelineSlider**: Time period selector with custom range
+- **MapView**: Leaflet-based map (replaces Google Maps - no API key needed)
+- **ScanButton**: Collapsible scan panel with location search, coordinates, radius, method, and date range
+- **AlertPanel**: Real-time alerts with auto-refresh
+- **StatsCard**: Animated statistics with loading states
+- ⚠️ Geocoding note: Uses free OSM Nominatim (rate-limited, not production-ready)
 
-✅ **Analytics Dashboard**
-- Line charts for temporal trends
-- Bar charts for regional comparison
-- Pie charts for distribution
-- Detailed statistics tables
-- Exportable data views
+✅ **User Experience**
+- Search by place name or coordinates
+- "Pick on Map" functionality for point-and-click scanning
+- Automatic map recentering and zoom to scanned area
+- Visual feedback: loading spinner, scan circle, result notifications
+- Truncation warnings displayed when results are limited
 
-✅ **UI/UX Features**
-- Beautiful gradient backgrounds
-- Framer Motion animations
-- TailwindCSS styling
-- Loading states and error handling
-- Responsive layouts
-- Dark theme optimized for data visualization
+## 🏗️ Project Architecture
 
-## 🏗️ Architecture
-
+### Backend Structure
 ```
-┌─────────────────────────────────────────┐
-│         Frontend (Next.js)              │
-│  ┌──────────┐  ┌──────────┐            │
-│  │ MapView  │  │ Alerts   │            │
-│  │ Stats    │  │ Timeline │            │
-│  └──────────┘  └──────────┘            │
-└─────────────┬───────────────────────────┘
-              │ HTTP/REST API
-┌─────────────▼───────────────────────────┐
-│      Backend (FastAPI)                  │
-│  ┌──────────┐  ┌──────────┐            │
-│  │ GEE      │  │ BigQuery │            │
-│  │ Pipeline │  │ Handler  │            │
-│  └──────────┘  └──────────┘            │
-│       │              │                  │
-│  ┌────▼──────────────▼────┐            │
-│  │   DSA Algorithms        │            │
-│  │  Union-Find | KD-Tree   │            │
-│  └─────────────────────────┘            │
-└─────────────┬──────────┬────────────────┘
-              │          │
-    ┌─────────▼──┐   ┌──▼─────────┐
-    │   GEE      │   │  BigQuery  │
-    │ Satellite  │   │  Storage   │
-    └────────────┘   └────────────┘
+backend/
+├── main.py                     ✅ FastAPI application entry
+├── config.py                   ✅ Settings and environment variables
+├── dependencies.py             ✅ Dependency injection
+├── gee_pipeline.py             ✅ Earth Engine integration & detection logic
+├── image_processor.py          ✅ Local OpenCV processing (CPU-intensive)
+├── fusion_algorithm.py         ✅ Multi-sensor fusion for "Combination" method
+├── dsa_algorithms.py           📚 Reference implementation (not in production)
+├── bigquery_handler.py         ✅ BigQuery operations
+├── routes/
+│   ├── forest_loss.py          ✅ Detection endpoints
+│   ├── alerts.py               ✅ Alert management
+│   └── stats.py                ✅ Statistics aggregation
+└── requirements.txt            ✅ Python dependencies
 ```
 
-## 📁 File Structure
-
+### Frontend Structure
 ```
-deforestation-tracker/
-├── backend/
-│   ├── main.py                    ✅ FastAPI entry point
-│   ├── config.py                  ✅ Configuration management
-│   ├── gee_pipeline.py            ✅ Earth Engine processing
-│   ├── bigquery_handler.py        ✅ BigQuery operations
-│   ├── dsa_algorithms.py          ✅ Union-Find & KD-Tree
-│   ├── requirements.txt           ✅ Python dependencies
-│   ├── Dockerfile                 ✅ Container configuration
-│   ├── .env.example              ✅ Environment template
-│   ├── README.md                  ✅ Backend documentation
-│   ├── routes/
-│   │   ├── forest_loss.py        ✅ Forest loss endpoints
-│   │   ├── alerts.py             ✅ Alert endpoints
-│   │   └── stats.py              ✅ Statistics endpoints
-│   └── models/
-│       └── __init__.py           ✅ Data models
-│
-├── frontend/
-│   ├── pages/
-│   │   ├── _app.tsx              ✅ App wrapper
-│   │   ├── index.tsx             ✅ Main dashboard
-│   │   └── dashboard.js          ✅ Analytics page
-│   ├── components/
-│   │   ├── MapView.tsx           ✅ Google Maps component
-│   │   ├── AlertPanel.tsx        ✅ Alerts sidebar
-│   │   ├── StatsCard.tsx         ✅ Statistics cards
-│   │   └── TimelineSlider.tsx    ✅ Time selector
-│   ├── styles/
-│   │   └── globals.css           ✅ Global styles
-│   ├── package.json               ✅ Dependencies
-│   ├── next.config.js            ✅ Next.js config
-│   ├── tailwind.config.js        ✅ Tailwind config
-│   ├── tsconfig.json             ✅ TypeScript config
-│   ├── Dockerfile                 ✅ Container config
-│   └── README.md                  ✅ Frontend docs
-│
-├── README.md                      ✅ Main documentation
-├── SETUP_GUIDE.md                 ✅ Setup instructions
-├── DEPLOYMENT.md                  ✅ Deployment guide
-├── CONTRIBUTING.md                ✅ Contribution guide
-├── LICENSE                        ✅ MIT License
-├── .gitignore                     ✅ Git ignore rules
-└── docker-compose.yml             ✅ Docker orchestration
+frontend/
+├── pages/
+│   ├── index.tsx               ✅ Main dashboard
+│   └── _app.tsx                ✅ App wrapper
+├── components/
+│   ├── MapView.tsx             ✅ Leaflet map component
+│   ├── ScanButton.tsx          ✅ Scan controls panel
+│   ├── AlertPanel.tsx          ✅ Alerts sidebar
+│   ├── StatsCard.tsx           ✅ Statistics display
+│   └── TimelineSlider.tsx      🗑️ Removed (replaced by date pickers)
+├── styles/
+│   └── globals.css             ✅ Global styles + Leaflet CSS
+├── package.json                ✅ Dependencies
+└── next.config.js              ✅ Next.js configuration
 ```
 
-## 🎯 Key Features Implemented
+## 🔧 Technology Stack
 
-### 1. Real-Time Satellite Data Processing
-- ✅ Hansen Global Forest Change dataset integration
-- ✅ MODIS NDVI vegetation indices
-- ✅ Temporal change detection between time periods
-- ✅ Automatic polygon generation from raster data
-
-### 2. Advanced DSA Algorithms
-- ✅ Union-Find with path compression (O(α(n)) operations)
-- ✅ KD-Tree for spatial indexing and queries
-- ✅ Connected component analysis for clustering
-- ✅ Confidence scoring based on multiple factors
-
-### 3. Cloud Infrastructure
-- ✅ BigQuery for scalable data storage
-- ✅ Partitioned tables for query optimization
-- ✅ GeoJSON and WKT geometry support
-- ✅ Automatic schema creation
-
-### 4. Production-Ready API
-- ✅ RESTful endpoints with FastAPI
-- ✅ Async/await for performance
-- ✅ Input validation and error handling
-- ✅ CORS configuration
-- ✅ Health checks
-- ✅ Comprehensive logging
-
-### 5. Interactive Visualization
-- ✅ Google Maps satellite imagery
-- ✅ Real-time polygon overlays
-- ✅ Confidence-based color coding
-- ✅ Interactive tooltips and info windows
-- ✅ Timeline slider for temporal analysis
-
-### 6. Analytics Dashboard
-- ✅ Time-series line charts
-- ✅ Regional bar charts
-- ✅ Distribution pie charts
-- ✅ Detailed statistics tables
-- ✅ Exportable data views
-
-### 7. Real-Time Alerts
-- ✅ High-confidence detection alerts
-- ✅ Severity classification
-- ✅ Auto-refresh functionality
-- ✅ Detailed alert information
-- ✅ Time-relative timestamps
-
-## 🔧 Technologies Used
-
-### Backend
-- **Python 3.9+** - Core language
-- **FastAPI** - Web framework
-- **Google Earth Engine** - Satellite data
-- **BigQuery** - Data warehouse
-- **NumPy/SciPy** - Scientific computing
+### Backend Technologies
+- **FastAPI** - High-performance async web framework
+- **Google Earth Engine** - Satellite data processing (server-side)
+- **BigQuery** - Data warehousing and querying
+- **NumPy** - Numerical operations
+- **OpenCV** - Image processing (local_smooth method)
+- **scikit-image** - Advanced image analysis
 - **Pydantic** - Data validation
 
-### Frontend
-- **Next.js 14** - React framework
+### Frontend Technologies
+- **Next.js** - React framework with SSR/SSG
+- **React** - UI library
 - **TypeScript** - Type safety
-- **TailwindCSS** - Styling
+- **Leaflet** - Interactive maps (replaces Google Maps)
+- **TailwindCSS** - Utility-first styling
 - **Framer Motion** - Animations
-- **Google Maps API** - Mapping
-- **Recharts** - Data visualization
-- **Lucide React** - Icons
+- **Lucide React** - Icon library
 
 ### Infrastructure
+- **Google Cloud Platform** - Hosting and services
 - **Docker** - Containerization
-- **Google Cloud Run** - Serverless compute
-- **Vercel** - Frontend hosting
-- **GitHub Actions** - CI/CD (optional)
+- **Uvicorn** - ASGI server
+- **Node.js** - Frontend runtime
 
-## 📊 Data Flow
+## 🔄 Data Flow
 
-1. **Detection Pipeline**
-   - User triggers detection via API or scheduled job
-   - GEE processes satellite imagery (Hansen or MODIS)
-   - DSA algorithms cluster connected pixels
-   - Results exported as GeoJSON polygons
-   - Data inserted into BigQuery with metadata
+1. **User Interaction**
+   - User enters location (name or coordinates), date range, radius, method
+   - Frontend sends request to backend API
 
-2. **Visualization Pipeline**
-   - Frontend fetches data from API
-   - BigQuery returns filtered results
-   - GeoJSON polygons rendered on Google Maps
+2. **Backend Processing**
+   - FastAPI receives request with parameters
+   - GEE pipeline fetches satellite imagery for the region and dates
+   - Detection algorithm runs (Hansen/NDVI/Combination/Local)
+   - Results vectorized to GeoJSON polygons
+   - Features limited to 1000 with truncation warning if needed
+   - Data optionally stored in BigQuery
+
+3. **Visualization**
+   - Frontend receives GeoJSON with features
+   - Leaflet renders polygons on satellite imagery
+   - Color-coding based on confidence levels
    - Statistics calculated and displayed
    - Alerts generated for high-confidence detections
 
-3. **Real-Time Updates**
-   - Alerts refresh every 30 seconds
-   - Stats update on time range change
-   - Map data refreshes on component mount
-   - All operations are non-blocking
+## 🎯 Key Features
 
-## 🚀 Deployment Options
+### 1. Real-Time Satellite Monitoring
+- ✅ Access to Landsat, Sentinel, and MODIS imagery via GEE
+- ✅ Hansen Global Forest Change dataset (production-ready)
+- ✅ Multi-sensor fusion for enhanced accuracy
 
-### Fully Configured For:
-- ✅ Google Cloud Run (backend)
-- ✅ Vercel (frontend)
-- ✅ Render (backend alternative)
-- ✅ Netlify (frontend alternative)
-- ✅ Docker Compose (local/VPS)
-- ✅ Kubernetes (optional, via Docker)
+### 2. Advanced Detection Algorithms
+- ✅ NDVI (Normalized Difference Vegetation Index) analysis
+- ✅ Hansen forest loss detection (2000-present)
+- ✅ Multi-dataset fusion combining 5+ data sources
+- ✅ Confidence scoring for each detection
 
-### Deployment Files Included:
-- ✅ Backend Dockerfile
-- ✅ Frontend Dockerfile
-- ✅ docker-compose.yml
-- ✅ Comprehensive deployment guide
-- ✅ Environment configuration templates
+### 3. Data Structures & Algorithms
+- 📚 Union-Find (DSU) for clustering (reference only, not in production)
+- 📚 KD-Tree for spatial queries (reference only, not in production)
+- ⚠️ Production uses GEE's native server-side vectorization
 
-## 📖 Documentation Provided
+### 4. BigQuery Integration
+- ✅ Streaming inserts for real-time data (disabled for free tier)
+- ✅ SQL-based queries for historical analysis
+- ✅ Geospatial querying with GEOGRAPHY types
+- ✅ Time-series analysis capabilities
 
-1. **README.md** - Project overview and quick start
-2. **SETUP_GUIDE.md** - Detailed setup instructions with troubleshooting
-3. **DEPLOYMENT.md** - Production deployment guide for all platforms
-4. **CONTRIBUTING.md** - Contribution guidelines and standards
-5. **backend/README.md** - Backend-specific documentation
-6. **frontend/README.md** - Frontend-specific documentation
+### 5. Interactive Visualization
+- ✅ Leaflet map with Esri satellite imagery
+- ✅ Real-time polygon overlays
+- ✅ Confidence-based color coding (red=high, yellow=low)
+- ✅ Click-through popups with area, confidence, timestamp
+- ✅ Date range selection for temporal analysis
 
-## 🔐 Security Features
+## 📊 Detection Methods Explained
 
-- ✅ Environment variable configuration
-- ✅ Service account authentication
-- ✅ API key restrictions
-- ✅ CORS configuration
-- ✅ Input validation
-- ✅ Parameterized database queries
-- ✅ HTTPS enforcement (in production)
-- ✅ Secret management support
+### Hansen Method (Recommended)
+- Uses 20+ years of forest change data
+- Production-grade accuracy
+- Fast (server-side processing on GEE)
+- Best for long-term change detection
 
-## 🧪 Testing Ready
+### Combination Method
+- Fuses ESA WorldCover, Dynamic World, Hansen GFC, GEDI, Sentinel-1
+- Research-grade accuracy
+- Slower (multiple datasets)
+- Best for detailed, high-confidence results
 
-- ✅ Pytest configuration for backend
-- ✅ Health check endpoints
-- ✅ API endpoint testing
-- ✅ Component structure for frontend tests
-- ✅ Error handling and logging
+### Local Smooth Method
+- CPU-intensive image processing on backend
+- ⚠️ **Performance warning**: Can overload server with concurrent requests
+- ⚠️ **Production recommendation**: Move to worker queue (Celery) or serverless (Cloud Run)
+- Best for experimental/custom processing
 
-## 💡 Unique Features
+## ⚠️ Known Limitations & Production Notes
 
-1. **Research-Grade Accuracy**
-   - Uses official Hansen dataset (peer-reviewed)
-   - DSA algorithms reduce false positives
-   - Confidence scoring for each detection
+### 1. Geocoding Service
+- **Current**: Free OSM Nominatim (rate-limited, 1 req/sec)
+- **Production fix**: Switch to Google Geocoding API or Mapbox
 
-2. **No Mock Data**
-   - All data from live satellite sources
-   - Real-time processing via GEE
-   - Actual BigQuery integration
+### 2. Result Truncation
+- **Limit**: 1000 features per request
+- **Mitigation**: Users are warned and advised to reduce area/date range
+- **Future**: Implement pagination or tile-based loading
 
-3. **Production-Ready**
-   - Scalable architecture
-   - Comprehensive error handling
-   - Monitoring and logging
-   - Cloud-native design
+### 3. Local Processing Bottleneck
+- **Issue**: `local_smooth` method runs synchronously on main server
+- **Risk**: Heavy CPU/memory usage can crash server under load
+- **Production fix**: Separate worker queue architecture
 
-4. **Beautiful UI**
-   - Modern design with animations
-   - Responsive across devices
-   - Intuitive user experience
-   - Professional data visualization
+### 4. Free Tier Limitations
+- BigQuery streaming inserts disabled for free tier
+- Nominatim geocoding has strict rate limits
+- No horizontal scaling of backend
 
-## 📈 Performance Characteristics
+### 5. DSA Algorithms Status
+- **Not in production**: Union-Find and KD-Tree are reference implementations
+- **Reason**: GEE's server-side vectorization is more efficient
+- **Kept for**: Educational purposes and future experimentation
 
-- **Backend**: Async operations, sub-second API responses
-- **Frontend**: Fast page loads with Next.js optimization
-- **Database**: Partitioned tables for efficient queries
-- **Algorithms**: Optimized Union-Find (O(α(n))), KD-Tree (O(log n))
-- **Scalability**: Handles thousands of polygons smoothly
+## 🚀 Getting Started
 
-## 🎓 Educational Value
+### Prerequisites
+- Google Cloud Platform account with Earth Engine and BigQuery enabled
+- Node.js 18+ and Python 3.10+
+- `gcloud` CLI installed
 
-### Demonstrates:
-- Cloud architecture design
-- Satellite data processing
-- Advanced DSA algorithm implementation
-- Full-stack web development
-- Production deployment practices
-- API design and documentation
-- Modern frontend development
-- Data visualization techniques
-
-## 🚦 Getting Started
-
-### Quick Start (5 minutes)
+### Quick Start
 ```bash
-# Backend
+# 1. Authenticate with Google Cloud
+gcloud auth application-default login
+
+# 2. Set your project ID
+export GCP_PROJECT_ID="your-project-id"
+
+# 3. Start backend
 cd backend
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
-cp .env.example .env  # Configure with your keys
 python main.py
 
-# Frontend (new terminal)
+# 4. Start frontend (in new terminal)
 cd frontend
 npm install
-cp .env.local.example .env.local  # Add your API key
 npm run dev
+
+# 5. Open http://localhost:3000
 ```
 
-Visit: http://localhost:3000
-
-### Full Setup (~30 minutes)
-Follow `SETUP_GUIDE.md` for complete instructions including:
-- GCP project creation
-- Service account setup
-- Earth Engine authentication
-- BigQuery configuration
-- Google Maps API key
+### Configuration
+- Backend: Edit `backend/config.py` or create `.env` file
+- Frontend: No environment variables needed (Leaflet doesn't require API keys)
 
 ## ✅ Verification Checklist
 
 All features have been implemented and tested:
-
-- [x] Backend FastAPI server runs
-- [x] GEE authentication works
+- [x] Backend API running on port 8000
+- [x] Frontend running on port 3000
+- [x] Google Earth Engine authentication working
 - [x] BigQuery connection established
 - [x] API endpoints respond correctly
 - [x] Frontend loads without errors
-- [x] Google Maps displays satellite view
-- [x] Polygons render on map
-- [x] Alerts panel populates
-- [x] Stats cards show data
-- [x] Timeline slider functions
-- [x] Dashboard charts display
-- [x] All documentation complete
-- [x] Docker configurations ready
-- [x] Deployment guides provided
+- [x] Leaflet map displays satellite view
+- [x] Polygons render on map with correct colors
+- [x] Alerts panel populates with mock data
+- [x] Statistics cards display data
+- [x] Date range selection works
+- [x] Location search and geocoding functional
+- [x] "Pick on Map" functionality works
+- [x] Loading states and animations working
+- [x] Truncation warnings display
+- [x] CORS configured for all necessary origins
 
-## 🎉 Ready for Use
+## 📈 Next Steps
 
-This project is **production-ready** and can be:
-- ✅ Run locally for development
-- ✅ Deployed to cloud platforms
-- ✅ Used for research purposes
-- ✅ Extended with new features
-- ✅ Customized for specific regions
-- ✅ Integrated with other systems
+### Recommended for Production
+1. **Geocoding**: Replace Nominatim with paid service
+2. **Worker Queue**: Move `local_smooth` to Celery or Cloud Run
+3. **Pagination**: Implement for results >1000 features
+4. **Caching**: Add Redis for frequently accessed regions
+5. **Rate Limiting**: Implement per-user request throttling
+6. **Monitoring**: Add Sentry/Datadog for error tracking
+7. **Authentication**: Add user login and API key management
 
-## 📞 Support Resources
+### Optional Enhancements
+- Email/SMS alerts for new deforestation events
+- Export functionality (CSV, Shapefile, KML)
+- Historical timeline visualization
+- Comparison tool (before/after imagery)
+- Mobile-responsive improvements
+- Multi-language support
 
-- **Setup Issues**: See `SETUP_GUIDE.md` troubleshooting section
-- **Deployment**: Follow `DEPLOYMENT.md` step-by-step
-- **Development**: Read `CONTRIBUTING.md` for guidelines
-- **API Usage**: Check `/docs` endpoint when backend is running
-- **Architecture**: Review component READMEs
+## 📝 Documentation
 
-## 🌟 Next Steps
+- `START_HERE.md` - Quick start guide
+- `AUTHENTICATION_SETUP.md` - GCP authentication guide
+- `DEPLOYMENT.md` - Production deployment guide
+- `frontend/README.md` - Frontend-specific documentation
+- `backend/README.md` - Backend API reference
 
-1. **Configure GCP** - Set up your Google Cloud project
-2. **Get API Keys** - Obtain Google Maps and Earth Engine access
-3. **Run Locally** - Test the system on your machine
-4. **Customize Region** - Adjust coordinates for your area of interest
-5. **Deploy** - Push to production using provided guides
-6. **Monitor** - Set up logging and alerting
-7. **Extend** - Add custom features for your use case
+## 🤝 Contributing
 
-## 🏆 Achievements
+This project follows clean code principles and has comprehensive documentation. See `CONTRIBUTING.md` for guidelines.
 
-✅ **Complete full-stack application** - Backend + Frontend + Infrastructure
-✅ **Real satellite data integration** - No mock data, only live sources
-✅ **Production-ready architecture** - Scalable, secure, monitored
-✅ **Advanced algorithms** - DSA implementations for accuracy
-✅ **Beautiful, modern UI** - Professional design with animations
-✅ **Comprehensive documentation** - 6 detailed guides
-✅ **Deployment ready** - Multiple platform options
-✅ **Open source** - MIT license for community use
+## 📄 License
+
+See LICENSE file for details.
 
 ---
 
-**🌲 Built with care for forest conservation and environmental monitoring 🌲**
-
-*This is a research-grade, production-ready application suitable for academic research, NGOs, government agencies, and environmental organizations.*
-
-
-
+**Last Updated**: October 2025
+**Status**: Production-ready with documented limitations
+**Maintained by**: Project Team

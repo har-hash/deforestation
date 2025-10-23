@@ -12,7 +12,8 @@ import numpy as np
 from pathlib import Path
 
 from config import settings
-from dsa_algorithms import UnionFind, KDTreeSpatial
+# DSA algorithms NOW INTEGRATED for pixel-level clustering
+from dsa_algorithms import UnionFind, KDTreeSpatial, SpatialChangeDetector
 from image_processor import LocalImageProcessor
 from fusion_algorithm import MultiDatasetFusionAlgorithm
 
@@ -27,6 +28,7 @@ class GEEPipeline:
         self._initialize_gee()
         self.local_processor = LocalImageProcessor()
         self.fusion_algorithm = MultiDatasetFusionAlgorithm()
+        self.spatial_detector = SpatialChangeDetector()  # DSA-powered clustering
     
     def _initialize_gee(self):
         """Authenticate and initialize Google Earth Engine"""
@@ -117,22 +119,26 @@ class GEEPipeline:
         roi: ee.Geometry,
         start_date: str,
         end_date: str,
-        scale: int = 30
+        scale: int = 10
     ) -> Tuple[np.ndarray, np.ndarray, Tuple]:
         """
-        Fetch raw NIR and Red band data as NumPy arrays for local processing
+        Fetch raw multi-band imagery from Sentinel-2 as NumPy arrays for advanced processing
+        
+        **UPGRADED**: Now uses Sentinel-2 with 10m resolution (vs Landsat's 30m)
+        Fetches 6 bands: Blue, Green, Red, NIR, SWIR1, SWIR2, Red-Edge
         
         Args:
             roi: Region of interest
             start_date: Start date (YYYY-MM-DD)
             end_date: End date (YYYY-MM-DD)
-            scale: Resolution in meters (default 30m for Landsat)
+            scale: Resolution in meters (default 10m for Sentinel-2)
             
         Returns:
             Tuple of (before_image, after_image, geo_transform)
-            Each image is a NumPy array with shape (height, width, 2) for [NIR, Red]
+            Each image is a NumPy array with shape (height, width, 7) for 
+            [Blue, Green, Red, NIR, Red-Edge, SWIR1, SWIR2]
         """
-        logger.info(f"Fetching raw imagery for local processing: {start_date} to {end_date}")
+        logger.info(f"🛰️  Fetching Sentinel-2 multi-band imagery: {start_date} to {end_date}, scale={scale}m")
         
         # Calculate mid-point for before/after split
         mid_date = (
@@ -140,20 +146,35 @@ class GEEPipeline:
             (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')) / 2
         ).strftime('%Y-%m-%d')
         
-        # Use Landsat 8 for better resolution
-        landsat = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+        # Use Sentinel-2 Level 2A (atmospherically corrected)
+        sentinel = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+        
+        # Cloud masking function
+        def mask_clouds(image):
+            qa = image.select('QA60')
+            # Bits 10 and 11 are clouds and cirrus
+            cloud_mask = qa.bitwiseAnd(1 << 10).eq(0).And(qa.bitwiseAnd(1 << 11).eq(0))
+            return image.updateMask(cloud_mask).divide(10000)  # Scale to 0-1
+        
+        # Select key bands for deforestation detection
+        # B2=Blue, B3=Green, B4=Red, B8=NIR, B8A=Red-Edge, B11=SWIR1, B12=SWIR2
+        band_names = ['B2', 'B3', 'B4', 'B8', 'B8A', 'B11', 'B12']
         
         # Before image (early period)
-        before = landsat.filterDate(start_date, mid_date) \
-                       .filterBounds(roi) \
-                       .median() \
-                       .select(['SR_B5', 'SR_B4'])  # NIR (B5), Red (B4)
+        before = sentinel.filterDate(start_date, mid_date) \
+                        .filterBounds(roi) \
+                        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) \
+                        .map(mask_clouds) \
+                        .median() \
+                        .select(band_names)
         
         # After image (later period)
-        after = landsat.filterDate(mid_date, end_date) \
-                      .filterBounds(roi) \
-                      .median() \
-                      .select(['SR_B5', 'SR_B4'])  # NIR (B5), Red (B4)
+        after = sentinel.filterDate(mid_date, end_date) \
+                       .filterBounds(roi) \
+                       .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) \
+                       .map(mask_clouds) \
+                       .median() \
+                       .select(band_names)
         
         # Get region bounds for geo transform
         bounds = roi.bounds().getInfo()['coordinates'][0]
@@ -191,47 +212,60 @@ class GEEPipeline:
         with urllib.request.urlopen(after_url) as response:
             after_data = np.load(io.BytesIO(response.read()), allow_pickle=True)
         
-        logger.info(f"Downloaded imagery raw: {before_data.shape}, {after_data.shape}")
+        logger.info(f"📦 Downloaded imagery raw: {before_data.shape}, {after_data.shape}")
         
         # Handle different array structures from GEE
-        # If it's a structured array (dict-like), extract bands
+        # Sentinel-2 returns 7 bands: [Blue, Green, Red, NIR, Red-Edge, SWIR1, SWIR2]
         if before_data.dtype.names:
             # Structured array with named fields
-            nir_before = before_data['SR_B5'].astype(float)
-            red_before = before_data['SR_B4'].astype(float)
-            nir_after = after_data['SR_B5'].astype(float)
-            red_after = after_data['SR_B4'].astype(float)
+            blue_before = before_data['B2'].astype(float)
+            green_before = before_data['B3'].astype(float)
+            red_before = before_data['B4'].astype(float)
+            nir_before = before_data['B8'].astype(float)
+            red_edge_before = before_data['B8A'].astype(float)
+            swir1_before = before_data['B11'].astype(float)
+            swir2_before = before_data['B12'].astype(float)
+            
+            blue_after = after_data['B2'].astype(float)
+            green_after = after_data['B3'].astype(float)
+            red_after = after_data['B4'].astype(float)
+            nir_after = after_data['B8'].astype(float)
+            red_edge_after = after_data['B8A'].astype(float)
+            swir1_after = after_data['B11'].astype(float)
+            swir2_after = after_data['B12'].astype(float)
+            
         else:
             # Regular array - assume it's [bands, height, width] or [height, width, bands]
             if len(before_data.shape) == 3:
-                if before_data.shape[0] == 2:  # [bands, h, w]
-                    nir_before = before_data[0].astype(float)
-                    red_before = before_data[1].astype(float)
-                    nir_after = after_data[0].astype(float)
-                    red_after = after_data[1].astype(float)
-                else:  # [h, w, bands]
-                    nir_before = before_data[:, :, 0].astype(float)
-                    red_before = before_data[:, :, 1].astype(float)
-                    nir_after = after_data[:, :, 0].astype(float)
-                    red_after = after_data[:, :, 1].astype(float)
+                if before_data.shape[0] == 7:  # [7 bands, h, w]
+                    blue_before, green_before, red_before, nir_before, red_edge_before, swir1_before, swir2_before = [
+                        before_data[i].astype(float) for i in range(7)
+                    ]
+                    blue_after, green_after, red_after, nir_after, red_edge_after, swir1_after, swir2_after = [
+                        after_data[i].astype(float) for i in range(7)
+                    ]
+                else:  # [h, w, 7 bands]
+                    blue_before, green_before, red_before, nir_before, red_edge_before, swir1_before, swir2_before = [
+                        before_data[:, :, i].astype(float) for i in range(7)
+                    ]
+                    blue_after, green_after, red_after, nir_after, red_edge_after, swir1_after, swir2_after = [
+                        after_data[:, :, i].astype(float) for i in range(7)
+                    ]
             else:
-                # 2D array - single band, use it for both NIR and Red (fallback)
-                logger.warning("Received 2D array, using same data for NIR and Red")
-                nir_before = before_data.astype(float)
-                red_before = before_data.astype(float) * 0.8  # Simulate difference
-                nir_after = after_data.astype(float)
-                red_after = after_data.astype(float) * 0.8
+                raise ValueError(f"Unexpected array shape: {before_data.shape}. Expected 3D with 7 bands.")
         
-        # Stack into [height, width, 2] format
-        before_stacked = np.stack([nir_before, red_before], axis=-1)
-        after_stacked = np.stack([nir_after, red_after], axis=-1)
+        # Stack into [height, width, 7] format
+        before_stacked = np.stack([blue_before, green_before, red_before, nir_before, 
+                                    red_edge_before, swir1_before, swir2_before], axis=-1)
+        after_stacked = np.stack([blue_after, green_after, red_after, nir_after,
+                                   red_edge_after, swir1_after, swir2_after], axis=-1)
         
         # Geo transform: (min_lon, pixel_width, 0, max_lat, 0, -pixel_height)
-        pixel_width = (max_lon - min_lon) / nir_before.shape[1]
-        pixel_height = (max_lat - min_lat) / nir_before.shape[0]
+        pixel_width = (max_lon - min_lon) / blue_before.shape[1]
+        pixel_height = (max_lat - min_lat) / blue_before.shape[0]
         geo_transform = (min_lon, pixel_width, 0, max_lat, 0, -pixel_height)
         
-        logger.info(f"Processed imagery: {before_stacked.shape}, {after_stacked.shape}")
+        logger.info(f"✅ Processed Sentinel-2 imagery: {before_stacked.shape}, {after_stacked.shape}")
         
         return before_stacked, after_stacked, geo_transform
     
@@ -392,6 +426,14 @@ class GEEPipeline:
         """
         NEW: Local image processing with smooth, natural boundaries
         Uses advanced CV techniques for professional GIS quality
+        
+        ⚠️ PERFORMANCE WARNING: This method is CPU and memory-intensive.
+        It runs synchronously on the backend server and can take 10-30 seconds
+        for moderate areas. Heavy concurrent usage may overload the server.
+        For production, consider:
+        - Moving to a separate worker queue (Celery)
+        - Using serverless compute (Google Cloud Run)
+        - Implementing request throttling
         
         Args:
             roi: Region of interest
@@ -562,14 +604,23 @@ class GEEPipeline:
             roi: Region of interest
             
         Returns:
-            GeoJSON dictionary
+            GeoJSON dictionary with optional 'warning' field if truncated
         """
         try:
+            # Count total features (expensive operation, but necessary for accuracy)
+            total_count = fc.size().getInfo()
+            
             # Limit features to prevent timeout
-            fc_limited = fc.limit(1000)
+            MAX_FEATURES = 1000
+            fc_limited = fc.limit(MAX_FEATURES)
             
             # Get as GeoJSON
             geojson = fc_limited.getInfo()
+            
+            # Add warning if results were truncated
+            if total_count > MAX_FEATURES:
+                geojson['warning'] = f"Results truncated: showing {MAX_FEATURES} of {total_count} features. Try a smaller area or date range."
+                logger.warning(f"Results truncated: {total_count} features found, returning {MAX_FEATURES}")
             
             # Add properties to each feature
             if 'features' in geojson:

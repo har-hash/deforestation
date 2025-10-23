@@ -25,9 +25,10 @@ export default function MapView() {
     const performScan = async (lat: number, lon: number, radius?: number, method?: string, startDate?: string, endDate?: string) => {
       try {
         setScanning(true)
+        setFeatures([]) // Clear previous results
         setScanCircle({ center: [lat, lon], radius: Number(radius || 5000) })
         setCenter([lat, lon])
-        setZoom(12)
+        setZoom(13)
         
         const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
         const url = `${base}/api/forest-loss?lat=${lat}&lon=${lon}&radius=${radius || 5000}&start_date=${startDate || '2020-01-01'}&end_date=${endDate || new Date().toISOString().slice(0,10)}&method=${method || 'hansen'}`
@@ -35,6 +36,7 @@ export default function MapView() {
         const data = await res.json()
         console.log('🔍 Backend response:', data)
         const fc = data?.data?.features || data?.features || []
+        const warning = data?.data?.warning || data?.warning || null
         console.log('🔍 Extracted features:', fc)
         console.log('🔍 Feature count:', fc.length)
         if (fc.length > 0) {
@@ -44,6 +46,9 @@ export default function MapView() {
         if (!fc.length) {
           setNotice('No deforestation detected for this area and date range.')
           setTimeout(()=>setNotice(''), 5000)
+        } else if (warning) {
+          setNotice(`⚠️ ${warning}`)
+          setTimeout(()=>setNotice(''), 8000)
         } else {
           setNotice(`Found ${fc.length} deforestation polygon${fc.length > 1 ? 's' : ''}`)
           setTimeout(()=>setNotice(''), 5000)
@@ -84,15 +89,36 @@ export default function MapView() {
       setPickOnMap(true)
     }
 
+    // zoom to alert event
+    const zoomToAlert = (e: CustomEvent) => {
+      const alert = e.detail
+      if (alert && alert.coordinates) {
+        // Extract center from polygon coordinates
+        const coords = alert.coordinates[0]
+        if (coords && coords.length > 0) {
+          const lats = coords.map((c: number[]) => c[1])
+          const lons = coords.map((c: number[]) => c[0])
+          const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2
+          const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2
+          setCenter([centerLat, centerLon])
+          setZoom(14)
+        }
+      }
+    }
+
     // @ts-ignore
     window.addEventListener('start-scan', handler as EventListener)
     // @ts-ignore
     window.addEventListener('enable-map-pick', enablePick as EventListener)
+    // @ts-ignore
+    window.addEventListener('zoom-to-alert', zoomToAlert as EventListener)
     return () => {
       // @ts-ignore
       window.removeEventListener('start-scan', handler as EventListener)
       // @ts-ignore
       window.removeEventListener('enable-map-pick', enablePick as EventListener)
+      // @ts-ignore
+      window.removeEventListener('zoom-to-alert', zoomToAlert as EventListener)
     }
   }, [])
 
@@ -115,6 +141,9 @@ export default function MapView() {
           } 
         }))
         setPickOnMap(false)
+        // Notify sidebar that pick is complete
+        // @ts-ignore
+        window.dispatchEvent(new CustomEvent('map-pick-complete'))
       }
     })
     return null
