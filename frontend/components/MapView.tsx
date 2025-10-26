@@ -32,7 +32,12 @@ export default function MapView() {
         
         const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
         const url = `${base}/api/forest-loss?lat=${lat}&lon=${lon}&radius=${radius || 5000}&start_date=${startDate || '2020-01-01'}&end_date=${endDate || new Date().toISOString().slice(0,10)}&method=${method || 'hansen'}`
+        console.log('🌐 Fetching:', url)
         const res = await fetch(url)
+        console.log('📡 Response status:', res.status, res.statusText)
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+        }
         const data = await res.json()
         console.log('🔍 Backend response:', data)
         const fc = data?.data?.features || data?.features || []
@@ -56,10 +61,11 @@ export default function MapView() {
         
         // Keep circle visible for 3 seconds after results
         setTimeout(() => setScanCircle(null), 3000)
-      } catch (err) {
-        console.error('Scan failed:', err)
-        setNotice('Scan failed. Please try again.')
-        setTimeout(()=>setNotice(''), 3000)
+      } catch (err: any) {
+        console.error('❌ Scan failed:', err)
+        const errorMsg = err?.message || 'Unknown error'
+        setNotice(`Scan failed: ${errorMsg}. Check if backend is running on port 8000.`)
+        setTimeout(()=>setNotice(''), 8000)
         setScanCircle(null)
       } finally {
         setScanning(false)
